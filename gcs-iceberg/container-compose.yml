@@ -1,0 +1,35 @@
+services:
+
+  fake-gcs:
+    image: fsouza/fake-gcs-server:latest
+    command: ["-scheme", "http", "-port", "4443", "-external-url", "http://fake-gcs:4443"]
+    ports:
+      - "4443:4443"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:4443/storage/v1/b"]
+      interval: 2s
+
+  fake-gcs-init:
+    image: curlimages/curl:latest
+    depends_on:
+      - fake-gcs
+    entrypoint:
+      - curl
+      - '-H Content-Type: application/json'
+      - -d
+      - '{"name":"local-fake-gcs-warehouse"}'
+      - http://fake-gcs:4443/storage/v1/b
+
+  iceberg-rest:
+    image: apache/iceberg-rest-fixture
+    depends_on:
+      - fake-gcs
+    ports:
+      - "8181:8181"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8181/v1/config"]
+      interval: 5s
+    environment:
+      CATALOG_WAREHOUSE: gs://local-fake-gcs-warehouse/
+      CATALOG_IO__IMPL: org.apache.iceberg.gcp.gcs.GCSFileIO
+      CATALOG_GCS_SERVICE_HOST: http://fake-gcs:4443
